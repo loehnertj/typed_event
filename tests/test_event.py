@@ -225,3 +225,185 @@ def test_class_self_handling(Cls):
         Cls.ev2(a=1)
     with pytest.raises(TypeError):
         o.ev2(a=2)
+
+
+def test_exception_policy_log(caplog):
+    """log policy logs errors and continues with later listeners."""
+
+    @event
+    def ev(a: int):
+        pass
+
+    def bad(a: int):
+        raise ValueError("boom")
+
+    good = Mock()
+    ev += bad
+    ev += good
+
+    with caplog.at_level("ERROR"):
+        ev(1)
+
+    good.assert_called_once_with(1)
+    assert any("boom" in record.getMessage() for record in caplog.records)
+
+
+def test_exception_policy_print(capsys):
+    """print policy prints traceback and continues with later listeners."""
+
+    @event(exceptions="print")
+    def ev(a: int):
+        pass
+
+    def bad(a: int):
+        raise ValueError("boom")
+
+    good = Mock()
+    ev += bad
+    ev += good
+    ev(1)
+
+    captured = capsys.readouterr()
+    good.assert_called_once_with(1)
+    assert "ValueError: boom" in captured.err
+
+
+def test_exception_policy_raise():
+    """raise policy re-raises immediately and stops later listeners."""
+
+    @event(exceptions="raise")
+    def ev(a: int):
+        pass
+
+    def bad(a: int):
+        raise ValueError("boom")
+
+    good = Mock()
+    ev += bad
+    ev += good
+
+    with pytest.raises(ValueError, match="boom"):
+        ev(1)
+
+    good.assert_not_called()
+
+
+def test_exception_policy_group():
+    """group policy runs all listeners and raises ExceptionGroup afterwards."""
+
+    @event(exceptions="group")
+    def ev(a: int):
+        pass
+
+    def bad1(a: int):
+        raise ValueError("v")
+
+    def bad2(a: int):
+        raise RuntimeError("r")
+
+    good = Mock()
+    ev += bad1
+    ev += good
+    ev += bad2
+
+    with pytest.raises(ExceptionGroup) as excinfo:
+        ev(1)
+
+    good.assert_called_once_with(1)
+    assert len(excinfo.value.exceptions) == 2
+    assert isinstance(excinfo.value.exceptions[0], ValueError)
+    assert isinstance(excinfo.value.exceptions[1], RuntimeError)
+
+
+@pytest.mark.parametrize("policy", ["log", "print", "raise", "group"])
+def test_cancel_event_bypasses_exception_policy(policy, caplog, capsys):
+    """CancelEvent is not treated as an error for any exception policy."""
+
+    @event(exceptions=policy)
+    def ev(a: int):
+        pass
+
+    def stop(a: int):
+        raise CancelEvent()
+
+    never_called = Mock()
+    ev += stop
+    ev += never_called
+
+    with caplog.at_level("ERROR"):
+        ev(1)
+
+    never_called.assert_not_called()
+    if policy == "log":
+        assert caplog.records == []
+    if policy == "print":
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+
+def test_invalid_exception_policy():
+    """Passing an unknown exception policy raises ValueError at definition time."""
+    with pytest.raises(ValueError):
+
+        @event(exceptions="invalid")
+        def ev(a: int):
+            pass
+
+
+def test_strict_mode_rejects_positional_or_keyword():
+    """strict=True raises TypeError when args are neither pos-only nor kw-only."""
+    with pytest.raises(TypeError):
+
+        @event(strict=True)
+        def ev(a: int, b: int):
+            pass
+
+
+def test_strict_mode_allows_posonly_and_kwonly():
+    """strict=True accepts pos-only and kw-only args (in separate events)."""
+
+    @event(strict=True)
+    def ev_pos(a: int, /):
+        pass
+
+    @event(strict=True)
+    def ev_kw(*, a: int):
+        pass
+
+
+def test_single_handler_return_value():
+    """Return value from the one handler that returns non-None is passed through."""
+
+    @event
+    def ev(a: int):
+        pass
+
+    ev += lambda a: a * 2
+
+    result = ev(21)
+    assert result == 42
+
+
+def test_prototype_return_value_raises():
+    """RuntimeError is raised when the prototype itself returns non-None."""
+
+    @event
+    def ev(a: int):
+        return a
+
+    with pytest.raises(RuntimeError):
+        ev(1)
+
+
+def test_multiple_return_values_raise():
+    """RuntimeError is raised when more than one handler returns a non-None value."""
+
+    @event
+    def ev(a: int):
+        pass
+
+    ev += lambda a: a
+    ev += lambda a: a * 2
+
+    with pytest.raises(RuntimeError):
+        ev(1)

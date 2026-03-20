@@ -229,7 +229,7 @@ class Event(Generic[P, R]):
         # Call to verify arguments
         r = self._prototype(*args, **kwargs)
         if r is not None:
-            results.append(r)
+            raise RuntimeError("Event prototype should not return a value")
         # === Call each listener ===
         excs = []
         for listener in self._listeners:
@@ -260,8 +260,6 @@ class Event(Generic[P, R]):
         return self
 
     def __isub__(self, listener: Callable[P, R | None]) -> Self:
-        if self._listeners is None:
-            raise TypeError("Cannot remove listener from unbound event")
         self._listeners = [
             r_listener for r_listener in self._listeners if r_listener is not listener
         ]
