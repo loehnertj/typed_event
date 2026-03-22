@@ -206,8 +206,7 @@ class Event(Generic[P, R]):
             raise TypeError(
                 "Event arguments must be marked positional-only or keyword-only!"
             )
-        self._self_arg = "self" in sig.parameters
-        self._argnames = [p.name for p in sig.parameters.values() if p.name != "self"]
+        self._argnames = [p.name for p in sig.parameters.values()]
         update_wrapper(self, self._prototype)
 
         self._is_bound = False

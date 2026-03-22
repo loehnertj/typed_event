@@ -114,9 +114,9 @@ def test_event_str(ev1, Cls):
     o = Cls()
     assert str(ev1) == "<Unbound Event ev1.<locals>.ev1()>"
     assert str(Cls.ev1) == "<Unbound Event Cls.<locals>.Cls.ev1(a)>"
-    assert str(Cls.ev2) == "<Unbound Event Cls.<locals>.Cls.ev2(a)>"
+    assert str(Cls.ev2) == "<Unbound Event Cls.<locals>.Cls.ev2(self, a)>"
     assert str(o.ev1) == "<Bound Event Cls.<locals>.Cls.ev1(a)>"
-    assert str(o.ev2) == "<Bound Event Cls.<locals>.Cls.ev2(a)>"
+    assert str(o.ev2) == "<Bound Event Cls.<locals>.Cls.ev2(self, a)>"
 
 
 def test_event_no_kwarg():
