@@ -276,7 +276,7 @@ def test_staticmethod_event_innermost():
 def test_exception_policy_log(caplog):
     """log policy logs errors and continues with later listeners."""
 
-    @event
+    @event(exceptions="log")
     def ev(a: int):
         pass
 
@@ -291,13 +291,15 @@ def test_exception_policy_log(caplog):
         ev(1)
 
     good.assert_called_once_with(1)
-    assert any("boom" in record.getMessage() for record in caplog.records)
+    # Check that the exception was logged with its traceback
+    assert len(caplog.records) > 0
+    assert any(record.exc_info and "boom" in str(record.exc_info[1]) for record in caplog.records)
 
 
-def test_exception_policy_print(capsys):
-    """print policy prints traceback and continues with later listeners."""
+def test_exception_policy_default(capsys):
+    """default policy passes exception to sys.excepthook and continues with later listeners."""
 
-    @event(exceptions="print")
+    @event(exceptions="default")
     def ev(a: int):
         pass
 
@@ -361,7 +363,7 @@ def test_exception_policy_group():
     assert isinstance(excinfo.value.exceptions[1], RuntimeError)
 
 
-@pytest.mark.parametrize("policy", ["log", "print", "raise", "group"])
+@pytest.mark.parametrize("policy", ["log", "default", "raise", "group"])
 def test_cancel_event_bypasses_exception_policy(policy, caplog, capsys):
     """CancelEvent is not treated as an error for any exception policy."""
 
@@ -382,7 +384,7 @@ def test_cancel_event_bypasses_exception_policy(policy, caplog, capsys):
     never_called.assert_not_called()
     if policy == "log":
         assert caplog.records == []
-    if policy == "print":
+    if policy == "default":
         captured = capsys.readouterr()
         assert captured.err == ""
 

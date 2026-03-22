@@ -11,7 +11,7 @@ __all__ = [
 ]
 
 import logging
-import traceback
+import sys
 import inspect
 from functools import update_wrapper
 from typing import (
@@ -37,7 +37,7 @@ T = TypeVar("T")
 P = ParamSpec("P")
 R = TypeVar("R")  # return type
 
-ExceptionPolicy: TypeAlias = Literal["log", "print", "raise", "group"]
+ExceptionPolicy: TypeAlias = Literal["default", "log", "raise", "group"]
 
 
 class CancelEvent(Exception):
@@ -126,8 +126,8 @@ class Event(Generic[P, R]):
     site. `Event` has the "exceptions" parameter to control how they are
     handled:
 
-    * ``"log"`` (default) emits a ``logging.error`` message with the traceback.
-    * ``"print"`` prints the exception (using ``traceback.print_exception``).
+    * ``"default"`` passes the exception to ``sys.excepthook`` (default behavior).
+    * ``"log"`` emits a ``logging.error`` message with the traceback.
     * ``"raise"`` raises any exception immediately. No subsequent listeners are
       called.
     * ``"group"`` calls all listeners, then raises an ``ExceptionGroup`` if any
@@ -180,7 +180,7 @@ class Event(Generic[P, R]):
         self,
         prototype: Callable[P, R],
         strict: bool | None = None,
-        exceptions: ExceptionPolicy = "log",
+        exceptions: ExceptionPolicy = "default",
     ):
         self._prototype = prototype
         self._listeners: list[Callable[P, R | None]] = []
@@ -242,9 +242,9 @@ class Event(Generic[P, R]):
                 break
             except Exception as exc:
                 if epolicy == "log":
-                    logging.exception(exc)
-                elif epolicy == "print":
-                    traceback.print_exception(exc)
+                    logging.exception("Exception in event listener")
+                elif epolicy == "default":
+                    sys.excepthook(type(exc), exc, exc.__traceback__)
                 elif epolicy == "group":
                     excs.append(exc)
                 else:
@@ -286,7 +286,7 @@ def event(
     prototype: Callable[P, R],
     *,
     strict: bool | None = None,
-    exceptions: ExceptionPolicy = "log",
+    exceptions: ExceptionPolicy = "default",
 ) -> Event[P, R]: ...
 
 
@@ -296,7 +296,7 @@ def event(
     prototype: None = None,
     *,
     strict: bool | None = None,
-    exceptions: ExceptionPolicy = "log",
+    exceptions: ExceptionPolicy = "default",
 ) -> Callable[[Callable[P, R]], Event[P, R]]: ...
 
 
@@ -304,13 +304,13 @@ def event(
     prototype: Callable[P, R] | None = None,
     *,
     strict: bool | None = None,
-    exceptions: ExceptionPolicy = "log",
+    exceptions: ExceptionPolicy = "default",
 ) -> Event[P, R] | Callable[[Callable[P, R]], Event[P, R]]:
     """Turn the decorated method into an Event.
 
     See `Event`. The `@event` decorator allows to pass arguments:
 
-        @event(strict=False, exeptions="print")
+        @event(strict=False, exceptions="default")
         def some_event(arg1: bool, /): ...
     """
     if prototype is None:

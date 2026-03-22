@@ -123,8 +123,8 @@ changed(1)
 
 Set via `@event(exceptions=...)`:
 
-- `"log"` (default): logs exceptions via `logging.exception`.
-- `"print"`: prints tracebacks.
+- `"default"`: passes exceptions to `sys.excepthook`.
+- `"log"`: logs exceptions via `logging.exception`.
 - `"raise"`: re-raises immediately and stops further listeners.
 - `"group"`: runs all listeners, then raises `ExceptionGroup` if any failed.
 
