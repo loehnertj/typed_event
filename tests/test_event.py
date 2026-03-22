@@ -31,12 +31,16 @@ def ev2():
 @pytest.fixture
 def Cls():
     class Cls:
+        # Tell type checkers that this event-like method does not receive an
+        # implicit self argument. Keep `@staticmethod` closest to the function,
+        # so `@event` remains the descriptor that creates bound copies.
         @event
+        @staticmethod
         def ev1(a: int):
             pass
 
         @event
-        def ev2(self, a):
+        def ev2(self, a:int):
             pass
 
     return Cls
@@ -161,7 +165,7 @@ def test_event_force_namedargs():
 
     ev += (m := Mock())
     with pytest.raises(TypeError):
-        ev(1, 2)
+        ev(1, 2) # type:ignore
     ev(a=1, b=2)
     m.assert_called_with(a=1, b=2)
 
@@ -178,7 +182,7 @@ def test_event_posargs():
 
     ev += (m := Mock())
     with pytest.raises(TypeError):
-        ev(a=1, b=2)
+        ev(a=1, b=2) #type:ignore
     ev(1, 2)
     m.assert_called_with(1, 2)
 
@@ -225,6 +229,48 @@ def test_class_self_handling(Cls):
         Cls.ev2(a=1)
     with pytest.raises(TypeError):
         o.ev2(a=2)
+    o.ev2(o, a=3)
+
+
+def test_staticmethod_event_outermost():
+    """@staticmethod wrapping @event breaks descriptor protocol: instances share handlers.
+    
+    When @staticmethod is the outer decorator, Cls.ev returns the unwrapped function,
+    bypassing the Event descriptor's __get__ that creates bound copies. This causes
+    all instances to share the same listener list instead of having separate ones.
+    This demonstrates what NOT to do.
+    """
+
+    class Cls:
+        @staticmethod
+        @event
+        def ev(a: int):
+            pass
+
+    o1 = Cls()
+    o2 = Cls()
+    o1.ev += (m1 := Mock(return_value=None))
+    o2.ev += (m2 := Mock(return_value=None))
+    
+    # Both instances share the same listener list because the descriptor
+    # protocol was bypassed. Calling either fires both handlers.
+    o1.ev(a=1)
+    m1.assert_called_once_with(a=1)
+    m2.assert_called_once_with(a=1)  # Both handlers fire! This is wrong.
+
+
+def test_staticmethod_event_innermost():
+    """@event may also wrap @staticmethod."""
+
+    class Cls:
+        @event
+        @staticmethod
+        def ev(a: int):
+            pass
+
+    Cls.ev += (m := Mock())
+    Cls.ev(1)
+    m.assert_called_once_with(1)
 
 
 def test_exception_policy_log(caplog):
@@ -345,7 +391,7 @@ def test_invalid_exception_policy():
     """Passing an unknown exception policy raises ValueError at definition time."""
     with pytest.raises(ValueError):
 
-        @event(exceptions="invalid")
+        @event(exceptions="invalid") #type:ignore
         def ev(a: int):
             pass
 

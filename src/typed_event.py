@@ -85,7 +85,11 @@ class Event(Generic[P, R]):
       ambiguous for the user of the class.
     * The prototype does not get an automatic ``self`` argument. I.e. it works
       like a ``staticmethod``. You *can* define a ``self`` argument, but it must
-      be given explicitly upon calling.
+      be given explicitly upon calling. Some type checkers (`pyright` in
+      particular) might complain about the first argument being of wrong type.
+      You can stack ``@staticmethod`` with ``@event`` to make that explicit, but
+      ``@staticmethod`` must be the inner decorator (i.e. below `@event`, not
+      above).
 
     **Listeners**
 
