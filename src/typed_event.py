@@ -70,7 +70,7 @@ class Event(Generic[P, R]):
 
     Restrictions apply:
 
-    * In ``strict`` mode, only positional-only and/or keyword-only
+    * In ``strict`` mode (default), only positional-only and/or keyword-only
       args are allowed. This is to make clear to the user how the arguments
       will be given (by position or by name).
 
@@ -78,8 +78,9 @@ class Event(Generic[P, R]):
       * Yes: ``prototype(*, a: int, b: str)``
       * No: ``prototype(a:int, b:str)`` (but allowed in non-strict mode)
 
-      ``strict`` mode is disabled for backwards compatibility, but will become
-      the default in the future.
+      Use `@event(strict=False)` to allow positional-or-keyword args. This is
+      mainly to allow existing code to be retrofitted with `@event` without
+      changing the signature. In new code, it's recommended to use strict mode.
 
     * Arguments with default values are forbidden, since their meaning would be
       ambiguous for the user of the class.
@@ -184,9 +185,9 @@ class Event(Generic[P, R]):
     ):
         self._prototype = prototype
         self._listeners: list[Callable[P, R | None]] = []
-        # None as default, so that we can discern from excplicit opt-in.
+        # None as default, so that we can discern from explicit opt-in.
         # allows to add a warning in the future.
-        self._strict: bool = strict or False
+        self._strict: bool = True if strict is None else bool(strict)
         if exceptions not in (policies := get_args(ExceptionPolicy)):
             raise ValueError(f"exceptions must be one of {policies}")
         self._exceptions = exceptions

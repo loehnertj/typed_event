@@ -20,7 +20,7 @@ from typed_event import event
 
 
 @event
-def counter_changed(new_value: int):
+def counter_changed(new_value: int, /):
 	"""Fired whenever the counter changes."""
 
 
@@ -33,6 +33,9 @@ counter_changed(42)
 counter_changed -= print_value
 ```
 
+Note that by default, `@event` requires you to make it explicit whether values
+are passed positionally or as keyword.
+
 ### Class events
 
 ```python
@@ -41,7 +44,7 @@ from typed_event import event
 
 class Counter:
 	@event
-	def changed(value: int):
+	def changed(value: int, /):
 		"""Fired when value changes."""
 
 
@@ -76,7 +79,7 @@ Prototype restrictions:
 
 - No default argument values.
 - No `*args` / `**kwargs` in the event prototype.
-- Optional strict mode (`strict=True`) requires parameters to be explicitly positional-only (`/`) or keyword-only (`*`).
+- Strict mode (enabled by default) requires parameters to be explicitly positional-only (`/`) or keyword-only (`*`). Disable with `strict=False`.
 
 Example with explicit keyword-only parameters:
 
@@ -102,7 +105,7 @@ from typed_event import event, CancelEvent
 
 
 @event
-def changed(value: int):
+def changed(value: int, /):
 	pass
 
 
@@ -123,7 +126,7 @@ changed(1)
 
 Set via `@event(exceptions=...)`:
 
-- `"default"`: passes exceptions to `sys.excepthook`.
+- `"default"` (default): passes exceptions to `sys.excepthook`.
 - `"log"`: logs exceptions via `logging.exception`.
 - `"raise"`: re-raises immediately and stops further listeners.
 - `"group"`: runs all listeners, then raises `ExceptionGroup` if any failed.

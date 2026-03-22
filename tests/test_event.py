@@ -21,7 +21,7 @@ def ev1():
 
 @pytest.fixture
 def ev2():
-    @event(exceptions="raise")
+    @event(strict=False, exceptions="raise")
     def ev2(a: int):
         """Event 2"""
 
@@ -36,14 +36,31 @@ def Cls():
         # so `@event` remains the descriptor that creates bound copies.
         @event
         @staticmethod
-        def ev1(a: int):
+        def ev1(*, a: int):
             pass
 
         @event
-        def ev2(self, a:int):
+        def ev2(self, /, *, a: int):
             pass
 
     return Cls
+
+
+def test_no_runtime_check_of_handler_signature():
+    """Handlers with wrong signature can be subscribed."""
+
+    @event(exceptions="group")
+    def ev(*, a: int):
+        pass
+
+    # No error at subscription time, even though handler has wrong signature.
+    # Type checkers will flag this as error.
+    ev += lambda: None  # type:ignore
+    ev += lambda b: None  # type:ignore
+    # This is actually OK, since the default arg value makes it compatible with the prototype's signature. The handler will receive a=1 when invoked.
+    ev += lambda a, b=1: None
+    with pytest.raises(ExceptionGroup):
+        ev(a=1)
 
 
 def test__event_docstring(ev1):
@@ -55,7 +72,7 @@ def test_event_signature():
     """parameter names and annotations are passed"""
 
     @event
-    def ev(a: int):
+    def ev(*, a: int):
         pass
 
     sig = inspect.signature(ev)
@@ -165,7 +182,7 @@ def test_event_force_namedargs():
 
     ev += (m := Mock())
     with pytest.raises(TypeError):
-        ev(1, 2) # type:ignore
+        ev(1, 2)  # type:ignore
     ev(a=1, b=2)
     m.assert_called_with(a=1, b=2)
 
@@ -182,7 +199,7 @@ def test_event_posargs():
 
     ev += (m := Mock())
     with pytest.raises(TypeError):
-        ev(a=1, b=2) #type:ignore
+        ev(a=1, b=2)  # type:ignore
     ev(1, 2)
     m.assert_called_with(1, 2)
 
@@ -234,7 +251,7 @@ def test_class_self_handling(Cls):
 
 def test_staticmethod_event_outermost():
     """@staticmethod wrapping @event breaks descriptor protocol: instances share handlers.
-    
+
     When @staticmethod is the outer decorator, Cls.ev returns the unwrapped function,
     bypassing the Event descriptor's __get__ that creates bound copies. This causes
     all instances to share the same listener list instead of having separate ones.
@@ -244,14 +261,14 @@ def test_staticmethod_event_outermost():
     class Cls:
         @staticmethod
         @event
-        def ev(a: int):
+        def ev(*, a: int):
             pass
 
     o1 = Cls()
     o2 = Cls()
     o1.ev += (m1 := Mock(return_value=None))
     o2.ev += (m2 := Mock(return_value=None))
-    
+
     # Both instances share the same listener list because the descriptor
     # protocol was bypassed. Calling either fires both handlers.
     o1.ev(a=1)
@@ -260,24 +277,24 @@ def test_staticmethod_event_outermost():
 
 
 def test_staticmethod_event_innermost():
-    """@event may also wrap @staticmethod."""
+    """@event can wrap @staticmethod."""
 
     class Cls:
         @event
         @staticmethod
-        def ev(a: int):
+        def ev(*, a: int):
             pass
 
     Cls.ev += (m := Mock())
-    Cls.ev(1)
-    m.assert_called_once_with(1)
+    Cls.ev(a=1)
+    m.assert_called_once_with(a=1)
 
 
 def test_exception_policy_log(caplog):
     """log policy logs errors and continues with later listeners."""
 
     @event(exceptions="log")
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     def bad(a: int):
@@ -293,14 +310,17 @@ def test_exception_policy_log(caplog):
     good.assert_called_once_with(1)
     # Check that the exception was logged with its traceback
     assert len(caplog.records) > 0
-    assert any(record.exc_info and "boom" in str(record.exc_info[1]) for record in caplog.records)
+    assert any(
+        record.exc_info and "boom" in str(record.exc_info[1])
+        for record in caplog.records
+    )
 
 
 def test_exception_policy_default(capsys):
     """default policy passes exception to sys.excepthook and continues with later listeners."""
 
     @event(exceptions="default")
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     def bad(a: int):
@@ -320,7 +340,7 @@ def test_exception_policy_raise():
     """raise policy re-raises immediately and stops later listeners."""
 
     @event(exceptions="raise")
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     def bad(a: int):
@@ -340,7 +360,7 @@ def test_exception_policy_group():
     """group policy runs all listeners and raises ExceptionGroup afterwards."""
 
     @event(exceptions="group")
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     def bad1(a: int):
@@ -368,7 +388,7 @@ def test_cancel_event_bypasses_exception_policy(policy, caplog, capsys):
     """CancelEvent is not treated as an error for any exception policy."""
 
     @event(exceptions=policy)
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     def stop(a: int):
@@ -393,8 +413,8 @@ def test_invalid_exception_policy():
     """Passing an unknown exception policy raises ValueError at definition time."""
     with pytest.raises(ValueError):
 
-        @event(exceptions="invalid") #type:ignore
-        def ev(a: int):
+        @event(exceptions="invalid")  # type:ignore
+        def ev(a: int, /):
             pass
 
 
@@ -423,7 +443,7 @@ def test_single_handler_return_value():
     """Return value from the one handler that returns non-None is passed through."""
 
     @event
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     ev += lambda a: a * 2
@@ -436,7 +456,7 @@ def test_prototype_return_value_raises():
     """RuntimeError is raised when the prototype itself returns non-None."""
 
     @event
-    def ev(a: int):
+    def ev(a: int, /):
         return a
 
     with pytest.raises(RuntimeError):
@@ -447,7 +467,7 @@ def test_multiple_return_values_raise():
     """RuntimeError is raised when more than one handler returns a non-None value."""
 
     @event
-    def ev(a: int):
+    def ev(a: int, /):
         pass
 
     ev += lambda a: a
@@ -455,3 +475,23 @@ def test_multiple_return_values_raise():
 
     with pytest.raises(RuntimeError):
         ev(1)
+
+
+def test_use_parameterized():
+    """myevent = event(strict=False, exceptions="log") can be (re)used to change defaults for multiple events."""
+
+    myevent = event(strict=False, exceptions="log")
+
+    @myevent
+    def ev1(a: int, b: int, /):
+        pass
+
+    @myevent
+    def ev2(a: int, b: int, /):
+        pass
+
+    # Both events should have the same defaults
+    assert ev1._strict == False
+    assert ev1._exceptions == "log"
+    assert ev2._strict == False
+    assert ev2._exceptions == "log"
