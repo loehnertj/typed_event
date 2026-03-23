@@ -45,138 +45,13 @@ class CancelEvent(Exception):
 
 
 class Event(Generic[P, R]):
-    """Notifies a number of "listeners" (functions) when called.
+    """Backing implementation of `event` (see there).
 
-    The principle is well-known under many names:
-
-    * Define the event as member of a class that wants to tell the world
-      about changes.
-    * Arbitrary listeners can subscribe the event.
-    * In the class's implementation, the event is called when the trigger
-      condition occurs. Listeners will be called in the order they subscribed.
-
-    **Defining events**
-
-    In contrast to other adhoc event systems, this one enforces well-defined
-    signatures and documentation. An event is created by decorating a method
-    (the so-called "prototype") with ``@event``.
-
-    The ``event`` will take over the method's signature, annotations and
-    docstring. IDE tools and Sphinx documentation should (mostly) "see" the
-    Event like any other method.
-
-    The prototype method is executed every time the event is triggered. Usually
-    it does not need any code except for a docstring or ``pass`` statement.
-
-    Restrictions apply:
-
-    * In ``strict`` mode (default), only positional-only and/or keyword-only
-      args are allowed. This is to make clear to the user how the arguments
-      will be given (by position or by name).
-
-      * Yes: ``prototype(a: int, b: str, /)``
-      * Yes: ``prototype(*, a: int, b: str)``
-      * No: ``prototype(a:int, b:str)`` (but allowed in non-strict mode)
-
-      Use `@event(strict=False)` to allow positional-or-keyword args. This is
-      mainly to allow existing code to be retrofitted with `@event` without
-      changing the signature. In new code, it's recommended to use strict mode.
-
-    * Arguments with default values are forbidden, since their meaning would be
-      ambiguous for the user of the class.
-    * The prototype does not get an automatic ``self`` argument. I.e. it works
-      like a ``staticmethod``. You *can* define a ``self`` argument, but it must
-      be given explicitly upon calling. Some type checkers (`pyright` in
-      particular) might complain about the first argument being of wrong type.
-      You can stack ``@staticmethod`` with ``@event`` to make that explicit, but
-      ``@staticmethod`` must be the inner decorator (i.e. below `@event`, not
-      above).
-
-    **Listeners**
-
-    A listener is a Callable whose signature fits the event specification.
-    Event listeners can be subscribed/unsubscribed using the ``+=`` and ``-=``
-    operators. Listener signature is *not* checked at the time of subscription.
-
-    There is some freedom in listener signature. E.g. you can have extra
-    parameters with default values, or you can catch the event data via
-    ``*args`` / ``**kwargs``.
-
-    **Triggering the event**
-
-    The event is triggered by calling the ``event`` instance. Usually this
-    happens within the class containing the Event.
-
-    First, the wrapped protoype is executed, in order to verify correct arguments.
-    Note that adherence to annotated types is *not* checked, in line with
-    standard Python behavior.
-
-    Any handler can raise `CancelEvent` to gracefully abort the processing of
-    further listeners.
-
-    **Return values**
-
-    At most one listener is expected to return a value. If multiple listeners
-    return a value, an exception is raised.
-
-    The return type must always be Optional.
-
-    **Exceptions**
-
-    Listeners may raise exceptions that are unexpected for the event's origin
-    site. `Event` has the "exceptions" parameter to control how they are
-    handled:
-
-    * ``"default"`` passes the exception to ``sys.excepthook`` (default behavior).
-    * ``"log"`` emits a ``logging.error`` message with the traceback.
-    * ``"raise"`` raises any exception immediately. No subsequent listeners are
-      called.
-    * ``"group"`` calls all listeners, then raises an ``ExceptionGroup`` if any
-      failed. The error is always an ``ExceptionGroup``, even in case of a single
-      error.
-
-    When using ``raise``, code that triggers an event must be prepared for any
-    exception being thrown at it.
-
-    `CancelEvent` is obviously exempt from this exception handling.
-
-    **Unbound/Bound distinction**
-
-    Analogous to unbound methods, the class will contain the event as "unbound"
-    event. You can in principle subscribe to it, and trigger it using
-    ``Class.event()``. There is only one, global list of subscribers.
-
-    A class *instance* will have a "bound" copy of the ``Event``, meaning that
-    it has its own list of subscribers independent from all other instances. It
-    does *not* inherit listeners from the unbound event. Typically, the *bound*
-    event is the one you want to subscribe to.
-
-    Lastly, you can also apply ``@event`` to a module-level function. There will
-    be only one, global list of subscribers, same as for an unbound event.
-
-    **Example**::
-
-        # Class definition
-        class MyCounter:
-            @event
-            def counter_changed_to(self, new_value:int):
-                '''Event: counter changed to given value'''
-
-            def my_timer_function(self):
-                # ...
-                self.counter_changed(123)
-                # ...
-
-        # User code
-        class MyGUI:
-            def __init__(self, counter_instance:MyCounter):
-                self.counter_instance = counter_instance
-                self.counter_instance.counter_changed_to += self.on_counter_changed
-
-            def on_counter_changed(self, new_value):
-                self.update_display(new_value)
+    Manages subscribers and calls them when the event is triggered. Also takes
+    care of the unbound/bound distinction by creating a copy of itself for each
+    instance. The copy shares the prototype and settings, but has its own list
+    of listeners.
     """
-
     def __init__(
         self,
         prototype: Callable[P, R],
@@ -307,12 +182,138 @@ def event(
     strict: bool | None = None,
     exceptions: ExceptionPolicy = "default",
 ) -> Event[P, R] | Callable[[Callable[P, R]], Event[P, R]]:
-    """Turn the decorated method into an Event.
+    """Notifies a number of "listeners" (functions) when called.
 
-    See `Event`. The `@event` decorator allows to pass arguments:
+    The principle is well-known under many names:
 
-        @event(strict=False, exceptions="default")
-        def some_event(arg1: bool, /): ...
+    * Define the event as member of a class that wants to tell the world
+      about changes.
+    * Arbitrary listeners can subscribe the event.
+    * In the class's implementation, the event is called when the trigger
+      condition occurs. Listeners will be called in the order they subscribed.
+
+    **Defining events**
+
+    In contrast to other adhoc event systems, this one enforces well-defined
+    signatures and documentation. An event is created by decorating a method
+    (the so-called "prototype") with ``@event``.
+
+    The ``event`` will take over the method's signature, annotations and
+    docstring. IDE tools and Sphinx documentation should (mostly) "see" the
+    Event like any other method.
+
+    The prototype method is executed every time the event is triggered. Usually
+    it does not need any code except for a docstring or ``pass`` statement.
+
+    Restrictions apply:
+
+    * In ``strict`` mode (default), only positional-only and/or keyword-only
+      args are allowed. This is to make clear to the user how the arguments
+      will be given (by position or by name).
+
+      * Yes: ``prototype(a: int, b: str, /)``
+      * Yes: ``prototype(*, a: int, b: str)``
+      * No: ``prototype(a:int, b:str)`` (but allowed in non-strict mode)
+
+      Use `@event(strict=False)` to allow positional-or-keyword args. This is
+      mainly to allow existing code to be retrofitted with `@event` without
+      changing the signature. In new code, it's recommended to use strict mode.
+
+    * Arguments with default values are forbidden, since their meaning would be
+      ambiguous for the user of the class.
+    * The prototype does not get an automatic ``self`` argument. I.e. it works
+      like a ``staticmethod``. If you define a ``self`` argument, it must
+      be given explicitly upon calling. Some type checkers (`pyright` in
+      particular) might complain about the first argument being of wrong type.
+      You can stack ``@event`` on top of ``@staticmethod`` to make that explicit.
+
+      ``@staticmethod`` *must* be the inner decorator (i.e. below `@event`, not
+      above). The other way around will appear to work, but listeners will be
+      shared between instances.
+
+    **Listeners**
+
+    A listener is a Callable whose signature fits the event specification.
+    Event listeners can be subscribed/unsubscribed using the ``+=`` and ``-=``
+    operators. Listener signature is *not* checked at the time of subscription.
+
+    There is some freedom in listener signature. E.g. you can have extra
+    parameters with default values, or you can catch the event data via
+    ``*args`` / ``**kwargs``.
+
+    **Triggering the event**
+
+    The event is triggered by calling the ``event`` instance. Usually this
+    happens within the class containing the Event.
+
+    First, the wrapped protoype is executed, in order to verify correct arguments.
+    Note that adherence to annotated types is *not* checked, in line with
+    standard Python behavior.
+
+    Any handler can raise `CancelEvent` to gracefully abort the processing of
+    further listeners.
+
+    **Return values**
+
+    At most one listener is expected to return a value. If multiple listeners
+    return a value, an exception is raised.
+
+    The return type must always be Optional.
+
+    **Exceptions**
+
+    Listeners could raise exceptions that are unexpected for the event's origin
+    site. `@event` has the "exceptions" parameter to control how they are
+    handled:
+
+    * ``"default"`` passes the exception to ``sys.excepthook`` (default behavior).
+    * ``"log"`` emits a ``logging.error`` message with the traceback.
+    * ``"raise"`` raises any exception immediately. No subsequent listeners are
+      called.
+    * ``"group"`` calls all listeners, then raises an ``ExceptionGroup`` if any
+      failed. The error is always an ``ExceptionGroup``, even in case of a single
+      error.
+
+    When using ``raise``, code that triggers an event must be prepared for any
+    exception being thrown at it.
+
+    `CancelEvent` is obviously exempt from this exception handling.
+
+    **Unbound/Bound distinction**
+
+    Analogous to unbound methods, the class will contain the event as "unbound"
+    event. You can in principle subscribe to it, and trigger it using
+    ``Class.event()``. There is only one, global list of subscribers.
+
+    A class *instance* will have a "bound" copy of the ``event``, meaning that
+    it has its own list of subscribers independent from all other instances. It
+    does *not* inherit listeners from the unbound event. Typically, the *bound*
+    event is the one you want to subscribe to.
+
+    Lastly, you can also apply ``@event`` to a module-level function. There will
+    be only one, global list of subscribers, same as for an unbound event.
+
+    **Example**::
+
+        # Class definition
+        class MyCounter:
+            @event
+            def counter_changed_to(self, new_value:int):
+                '''Event: counter changed to given value'''
+
+            def my_timer_function(self):
+                # ...
+                self.counter_changed(123)
+                # ...
+
+        # User code
+        class MyGUI:
+            def __init__(self, counter_instance:MyCounter):
+                self.counter_instance = counter_instance
+                self.counter_instance.counter_changed_to += self.on_counter_changed
+
+            def on_counter_changed(self, new_value):
+                self.update_display(new_value)
     """
     if prototype is None:
 
