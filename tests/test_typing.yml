@@ -1,0 +1,179 @@
+- case: handler_missing_required_argument
+  # Event handler must provide all specified keyword arguments of the event.
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(*, a: int):
+        pass
+    
+    ev += lambda: None
+  out: |
+    main:7: error: Cannot infer type of lambda  [misc]
+    main:7: error: Argument 1 to "__iadd__" of "Event" has incompatible type "Callable[[], None]"; expected "def (*, a: int) -> Any | None"  [arg-type]
+
+- case: handler_unexpected_argument
+  # Event handler's arguments must have the same name and type as the event's keyword arguments.
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(*, a: int):
+        pass
+    
+    ev += lambda b: None
+  out: |
+    main:7: error: Cannot infer type of lambda  [misc]
+    main:7: error: Argument 1 to "__iadd__" of "Event" has incompatible type "Callable[[Any], None]"; expected "def (*, a: int) -> Any | None"  [arg-type]
+
+- case: handler_with_default_value_ok
+  # Event handlers can have additional optional arguments beyond those required by the event
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(*, a: int) -> None:
+        pass
+    
+    def handler(*, a: int, b: int = 1) -> None: 
+        pass
+    ev += handler
+
+- case: handler_accepts_kwargs
+  # Handlers typed with Callable[..., ...], i.e. accepting any kwargs are accepted
+  main: |
+    from typing import Callable
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(*, a: int) -> None:
+        pass
+    
+    h: Callable[..., None] = lambda **kw: None
+    ev += h
+
+- case: handler_accepts_varargs
+  # Handlers typed with Callable[..., ...], i.e. accepting any pos. args are accepted
+  main: |
+    from typing import Callable
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(a: int, /) -> None:
+        pass
+    
+    h: Callable[..., None] = lambda *args: None
+    ev += h
+
+- case: positional_only_event_handler_match
+  # Handlers with matching positional-only parameters are accepted
+  main: |
+    from typing import Callable
+    from typed_event import event
+    
+    @event(exceptions="raise")
+    def ev(a: int, /) -> None:
+        pass
+    
+    h: Callable[[int], None] = lambda x: None
+    ev += h
+
+- case: keyword_only_event_handler_missing_arg
+  # Handlers missing required keyword-only arguments are rejected
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="raise")
+    def ev(*, a: int, b: str):
+        pass
+    
+    ev += lambda *, a: None
+  out: |
+    main:7: error: Cannot infer type of lambda  [misc]
+    main:7: error: Argument 1 to "__iadd__" of "Event" has incompatible type "def <lambda>(*, a: Any) -> None"; expected "def (*, a: int, b: str) -> Any | None"  [arg-type]
+
+- case: keyword_only_event_handler_extra_required_arg
+  # Handlers with extra required keyword-only arguments are rejected
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="raise")
+    def ev(*, a: int):
+        pass
+    
+    ev += lambda *, a, b: None
+  out: |
+    main:7: error: Cannot infer type of lambda  [misc]
+    main:7: error: Argument 1 to "__iadd__" of "Event" has incompatible type "def <lambda>(*, a: Any, b: Any) -> None"; expected "def (*, a: int) -> Any | None"  [arg-type]
+
+- case: multiple_handlers_various_signatures
+  # Multiple handlers with compatible signatures are accepted, incompatible ones are rejected
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="group")
+    def ev(x: int, y: str) -> None:
+        pass
+    
+    def h1(x: int, y: str) -> None:
+        pass
+    ev += h1
+    
+    def h2(x: int, y: str, z: str = "default") -> None:
+        pass
+    ev += h2
+    
+    ev += lambda x: None
+  out: |
+    main:15: error: Cannot infer type of lambda  [misc]
+    main:15: error: Argument 1 to "__iadd__" of "Event" has incompatible type "Callable[[Any], None]"; expected "Callable[[int, str], None]"  [arg-type]
+
+- case: handler_too_few_positional_args
+  # Handlers with too few positional arguments are rejected
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="raise")
+    def ev(a: int, b: int, /):
+        pass
+    
+    ev += lambda a: None
+  out: |
+    main:7: error: Cannot infer type of lambda  [misc]
+    main:7: error: Argument 1 to "__iadd__" of "Event" has incompatible type "Callable[[Any], None]"; expected "Callable[[int, int], Any | None]"  [arg-type]
+
+- case: handler_correct_many_args
+  # Handlers with correct signatures and extra optional arguments are all accepted
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="log")
+    def ev(a: int, b: str, c: bool) -> None:
+        pass
+    
+    def h1(a: int, b: str, c: bool) -> None:
+        pass
+    ev += h1
+    
+    def h2(a: int, b: str, c: bool, d: str = "extra") -> None:
+        pass
+    ev += h2
+    
+    from typing import Callable
+    h3: Callable[..., None] = lambda **kwargs: None
+    ev += h3
+
+- case: handler_correct_count_wrong_type
+  # Handlers with correct number of positional args but wrong type annotation are rejected
+  main: |
+    from typed_event import event
+    
+    @event(exceptions="raise")
+    def ev(a: int, /) -> None:
+        pass
+    
+    def handler(a: str, /) -> None:
+        pass
+    ev += handler
+  out: |
+    main:9: error: Argument 1 to "__iadd__" of "Event" has incompatible type "Callable[[str], None]"; expected "Callable[[int], None]"  [arg-type]
