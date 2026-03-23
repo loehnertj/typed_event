@@ -43,9 +43,16 @@ from typed_event import event
 
 
 class Counter:
+	def __init__(self):
+		self._value = 0
+
 	@event
 	def changed(value: int, /):
 		"""Fired when value changes."""
+
+	def set_value(self, value: int):
+		self._value = value
+		self.changed(value)  # fire the event
 
 
 c1 = Counter()
@@ -60,18 +67,11 @@ def on_c2(value: int):
 c1.changed += on_c1
 c2.changed += on_c2
 
-c1.changed(1)  # only on_c1
-c2.changed(2)  # only on_c2
+c1.set_value(1)  # prints "c1: 1"
+c2.set_value(2)  # prints "c2: 2"
 ```
 
 Each instance gets its own bound event with its own listener list.
-
-## Behavior and guarantees
-
-- Event signatures are copied from the prototype (name, parameters, annotations, docstring).
-- Calling an event validates arguments using normal Python call semantics.
-- Listener signatures are not validated at subscription time; a mismatch fails when invoked.
-- Type annotations are not runtime-enforced.
 
 ## Defining event prototypes
 
@@ -79,7 +79,7 @@ Prototype restrictions:
 
 - No default argument values.
 - No `*args` / `**kwargs` in the event prototype.
-- Strict mode (enabled by default) requires parameters to be explicitly positional-only (`/`) or keyword-only (`*`). Disable with `strict=False`.
+- Strict mode (enabled by default) requires parameters to be explicitly positional-only (`/`) or keyword-only (`*`). Opt-out by using `@event(strict=False)`.
 
 Example with explicit keyword-only parameters:
 
@@ -95,6 +95,11 @@ def changed(*, a: int, b: int):
 changed(a=1, b=2)      # ok
 # changed(1, 2)         # TypeError
 ```
+
+**Notes:**
+
+- Listener signatures are not validated at subscription time; a mismatch only fails when invoked.
+- Type annotations are **not** runtime-enforced — the name refers to static typing support, not runtime checks.
 
 ## Cancellation
 
@@ -128,7 +133,7 @@ Set via `@event(exceptions=...)`:
 
 - `"default"` (default): passes exceptions to `sys.excepthook`.
 - `"log"`: logs exceptions via `logging.exception`.
-- `"raise"`: re-raises immediately and stops further listeners.
+- `"raise"`: re-raises immediately and stops further listeners. I.e. no "handling" at all.
 - `"group"`: runs all listeners, then raises `ExceptionGroup` if any failed.
 
 `CancelEvent` is handled separately and is never treated as an error.
@@ -137,3 +142,34 @@ Set via `@event(exceptions=...)`:
 
 At most one non-`None` return value is allowed across prototype + listeners.
 If multiple handlers return a value, a `RuntimeError` is raised.
+
+## Changing event settings on module / project level
+
+To define many events with changed settings (e.g. different default for `exception`), make an alias decorator like so:
+
+```
+from typed_event import event
+my_event = event(strict=False, exceptions="log")
+
+@my_event
+def event1(): ...
+
+@my_event
+def event2(): ...
+```
+
+To apply project-wide, define the alias in a helper module and import from there.
+
+## Changelog
+
+### Version 1.0 (23.03.2026)
+
+First release of the library as standalone project. Previously it was part of [ASCII
+Designer](https://github.com/loehnertj/ascii_designer).
+
+Minor changes happened (strict mode as default, using sys.excepthook instead of
+print). Besides that, comprehensive testing and documentation was added.
+
+## License
+
+Provided under [MIT license](LICENSE).
