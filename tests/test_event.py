@@ -3,6 +3,11 @@ import inspect
 from unittest.mock import Mock
 from typed_event import Event, event, CancelEvent
 
+try:
+    ExceptionGroup
+except NameError:
+    from exceptiongroup import ExceptionGroup
+
 # TBD:
 # binding to class event:
 # XXX: Expectation? Should invoke both on Cls.foo and instance.foo?

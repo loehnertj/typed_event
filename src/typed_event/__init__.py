@@ -19,12 +19,22 @@ from typing import (
     Literal,
     ParamSpec,
     Generic,
-    Self,
     TypeAlias,
     TypeVar,
     overload,
     get_args,
 )
+
+# Python 3.10 compat imports
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
+try:
+    ExceptionGroup
+except NameError:
+    from exceptiongroup import ExceptionGroup
 
 from weakref import WeakValueDictionary
 
