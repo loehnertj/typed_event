@@ -162,6 +162,11 @@ To apply project-wide, define the alias in a helper module and import from there
 
 ## Changelog
 
+### Version 1.1.0 (28.03.2026)
+
+Make the library compatible with Python 3.10 (oldest version which is not EOL'ed
+yet.)
+
 ### Version 1.0 (23.03.2026)
 
 First release of the library as standalone project. Previously it was part of [ASCII
